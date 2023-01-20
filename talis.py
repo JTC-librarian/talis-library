@@ -3,22 +3,22 @@ import urllib.parse
 import json
 import base64
 
+
+##################################################################################################
+#####################  Authentication Section From Here  #########################################
+##################################################################################################
 secret = input("Enter the client secret: ")
-api_base = "YOUR API BASE URL HERE" ## e.g., https://rl.talis.com/3/solent/
 headers = {}
 
-## This bit does the authorization. I have set it up so that the client ID is
-### hardcoded in the file - put it in line 13 - and the Client Secret needs to
-### be input each time you run a script (see line 6).
 def setAuthorizationHeader():
-    secret_key = 'YOUR CLIENT ID HERE' + ':' + secret
+    secret_key = '2dC3aXnN:' + secret
     secret_key_bytes = secret_key.encode('ascii')
     secret_key_b64bytes = base64.b64encode(secret_key_bytes)
     secret_key_b64string = secret_key_b64bytes.decode('ascii')
     data = {'grant_type': 'client_credentials'}
     data = urllib.parse.urlencode(data)
     data = data.encode('ascii')
-    request = urllib.request.Request('https://users.talis.com/oauth/tokens', data=data)
+    request = urllib.request.Request('https://users.talis.com/oauth/tokens', data=data, method="POST")
     request.add_header('Authorization', 'Basic ' + secret_key_b64string)
     response = urllib.request.urlopen(request)
     response_text = response.read().decode('utf8')
@@ -26,27 +26,53 @@ def setAuthorizationHeader():
     token = response_json["access_token"]
     headers['Authorization'] = "Bearer " + token
 
-## This bit sets the user. I have it hardcoded to my ID. You can get
-### your ID from the All User Profile report on your tenancy, under the
-### Talis Global User ID field.
 def setUserHeader():
-    headers['X-Effective-User'] = 'YOUR USER ID HERE'
+    headers['X-Effective-User'] = '7CcTgKkgj3yrkfglWs9XwQ' ## This sets me as the user!
 
 setAuthorizationHeader()
 setUserHeader()
 
+
+####################################################################################################
+#####################  Re-usable Code Section From Here  ###########################################
+####################################################################################################
+api_base = "https://rl.talis.com/3/solent/"
+
+def createRequestObject(url, body, method):
+    if body:
+        jsondata = json.dumps(body)
+        jsondataasbytes = jsondata.encode('utf-8')        
+        request = urllib.request.Request(url, data=jsondataasbytes, headers=headers, method=method)
+        request.add_header('Content-Type', 'application/json; charset=utf-8')
+        request.add_header('Content-Length', len(jsondataasbytes))
+    else:
+        request = urllib.request.Request(url, data=None, headers=headers, method=method)
+    return request
+
+def makeRequest(requestObject):
+    try:
+        response = urllib.request.urlopen(requestObject)
+        response_text = response.read().decode('utf8')
+        response_json = json.loads(response_text)
+        return response_json
+    except Exception as e:
+        print(str(e))
+        print(e.read())
+        
+        
+##################################################################################################
+################  Real Functions From Here Onwards  ##############################################
+##################################################################################################
 def getListEtag(list_id):
     list_etag = ""
     url = api_base + "draft_lists/" + list_id
     request = urllib.request.Request(url, headers=headers)
-    response = urllib.request.urlopen(request)
-    response_text = response.read().decode('utf8')
-    response_json = json.loads(response_text)
-    list_etag = response_json['data']['meta']['list_etag']
+    response = makeRequest(request)
+    list_etag = response['data']['meta']['list_etag']
     return list_etag
 
-def getListFromItem(item_id):
-    item_json = getItem(item_id)
+def getListFromItem(item):
+    item_json = getItem(item)
     list_id = item_json['data']['relationships']['list']['data']['id']
     return(list_id)
 
@@ -56,13 +82,11 @@ def getListItems(list_id):
     lastPage = False
     while not lastPage:
         request = urllib.request.Request(url, headers=headers)
-        response = urllib.request.urlopen(request)
-        response_text = response.read().decode('utf8')
-        response_json = json.loads(response_text)
-        for datum in response_json['data']:
+        response = makeRequest(request)
+        for datum in response['data']:
             full_data.append(datum)
         try:
-            url = response_json['links']['next']
+            url = response['links']['next']
         except:
             lastPage = True
     return full_data
@@ -70,56 +94,55 @@ def getListItems(list_id):
 def getList(list_id):
     url = api_base + "lists/" + list_id
     request = urllib.request.Request(url, headers=headers)
-    response = urllib.request.urlopen(request)
-    response_text = response.read().decode('utf8')
-    response_json = json.loads(response_text)
-    return response_json
+    response = makeRequest(request)
+    return response
 
 def getItem(item_id):
     url = api_base + "items/" + item_id + "?include=list"
     request = urllib.request.Request(url, headers=headers)
-    response = urllib.request.urlopen(request)
-    response_text = response.read().decode('utf8')
-    response_json = json.loads(response_text)
-    return response_json
+    response = makeRequest(request)
+    return response
 
 def getResource(resource_id):
     url = api_base + "resources/" + resource_id
     request = urllib.request.Request(url, headers=headers)
-    response = urllib.request.urlopen(request)
-    response_text = response.read().decode('utf8')
-    response_json = json.loads(response_text)
-    return response_json
+    response = makeRequest(request)
+    return response
 
 def updateResourceLinkAndLCN(resource_id, lcn, link):
     url = api_base + "resources/" + resource_id
-    print(link)
-    body = {"data":{"type":"resources","id":resource_id,"attributes":{"online_resource":{"source":"uri","link":link},"web_addresses":[link],"lcn":lcn}}}
-    print(body)
-    jsondata = json.dumps(body)
-    jsondataasbytes = jsondata.encode('utf-8')
-    request = urllib.request.Request(url, data=jsondataasbytes, headers=headers, method='PATCH')
-    request.add_header('Content-Type', 'application/json; charset=utf-8')
-    request.add_header('Content-Length', len(jsondataasbytes))
-    response = urllib.request.urlopen(request)
-    response_text = response.read().decode('utf8')
-    response_json = json.loads(response_text)
-    return response_json
+    body = {"data":
+                {"type":"resources",
+                "id":resource_id,
+                "attributes":{
+                    "online_resource":{
+                        "source":"uri",
+                        "link":link},
+                    "web_addresses":[link],
+                    "lcn":lcn}}}
+    request = createRequestObject(url, body, "PATCH")
+    response = makeRequest(requestObject)
+    return response
 
 def updateResourceLinkOnly(resource_id, link):
     url = api_base + "resources/" + resource_id
-    print(link)
-    body = {"data":{"type":"resources","id":resource_id,"attributes":{"online_resource":{"source":"uri","link":link},"web_addresses":[link]}}}
-    print(body)
-    jsondata = json.dumps(body)
-    jsondataasbytes = jsondata.encode('utf-8')
-    request = urllib.request.Request(url, data=jsondataasbytes, headers=headers, method='PATCH')
-    request.add_header('Content-Type', 'application/json; charset=utf-8')
-    request.add_header('Content-Length', len(jsondataasbytes))
-    response = urllib.request.urlopen(request)
-    response_text = response.read().decode('utf8')
-    response_json = json.loads(response_text)
-    return response_json
+    body = {"data":
+                {"type":"resources",
+                "id":resource_id,
+                "attributes":{
+                    "online_resource":{
+                        "source":"uri",
+                        "link":link},
+                    "web_addresses":[link]}}}
+    request = createRequestObject(url, body, "PATCH")
+    response = makeRequest(requestObject)
+    return response
+
+def updateResource(resource_id, body_with_changes):
+    url = api_base + "resources/" + resource_id
+    request = createRequestObject(url, body_with_changes, "PATCH")
+    response = makeRequest(requestObject)
+    return response
 
 def publishLists(list_of_lists):
     url = api_base + "bulk_list_publish_actions"
@@ -134,38 +157,42 @@ def publishLists(list_of_lists):
                 'relationships':{
                     'draft_lists':{
                         'data':list_of_list_dicts}}}}
-    jsondata = json.dumps(body)
-    jsondataasbytes = jsondata.encode('utf-8')   # needs to be bytes
-    request = urllib.request.Request(url, data=jsondataasbytes, headers=headers, method='POST')
-    request.add_header('Content-Type', 'application/json; charset=utf-8')
-    request.add_header('Content-Length', len(jsondataasbytes))
-    response = urllib.request.urlopen(request)
-    response_text = response.read().decode('utf8')
-    response_json = json.loads(response_text)
-    return response_json
+    request = createRequestObject(url, body, "POST")
+    response = makeRequest(request)
+    return response
 
-def createDraftItem(body_dict): 
+def createResource(body_for_new_resource):
+    url = api_base + "resources"
+    request = createRequestObject(url, body_for_new_resource, "POST")
+    response = makeRequest(request)
+    return response
+
+def createDraftItem(body_for_new_item): 
     url = api_base + "draft_items"
-    jsondata = json.dumps(body_dict)
-    jsondataasbytes = jsondata.encode('utf-8')
-    request = urllib.request.Request(url, data=jsondataasbytes, headers=headers, method='POST')
-    request.add_header('Content-Type', 'application/json; charset=utf-8')
-    request.add_header('Content-Length', len(jsondataasbytes))
-    try:
-        response = urllib.request.urlopen(request)
-        response_text = response.read().decode('utf8')
-        response_json = json.loads(response_text)
-    except Exception as e:
-        print(str(e))
-        print(e.read())
+    request = createRequestObject(url, body_for_new_item, "POST")
+    response = makeRequest(request)
+    return response
 
 def deleteItem(item_id):
     list_id = getListFromItem(item_id)
     list_etag = getListEtag(list_id)
-    body = {}
-    body["meta"] = {}
-    body["meta"]["list_id"] = list_id
-    body["meta"]["list_etag"] = list_etag
+    body = {'meta':{
+                'list_id':list_id,
+                'list_etag':list_etag}}
     url = api_base + "draft_items/" + item_id
-    response = requests.delete(url, json=body, headers=headers)
-    print(response.text)
+    request = createRequestObject(url, body, "DELETE")
+    response = makeRequest(request)
+
+def archiveList(list_id):
+    url = api_base + "lists/" + list_id + "/archive"
+    body = False
+    request = createRequestObject(url, body, "POST")
+    response = makeRequest(request)
+
+def updateOwners(list_id, owner):
+    url = api_base + "lists/" + list_id + "/relationships/owners"
+    if owner == "James":
+        body = {"data":[{"type":"users","id":"7CcTgKkgj3yrkfglWs9XwQ"}]}
+    request = createRequestObject(url, body, "PATCH")
+    response = makeRequest(request)
+    return response
